@@ -12,26 +12,49 @@
       justify-content: center; 
       align-items: center; 
       height: 100vh; 
-      background-color: #fde3e3; /* Optional: Background color for better visibility */
+      background-color: #f8f8f8; /* Optional: Background color for better visibility */
       padding-top: 10px;
     }
     canvas { 
-    
       width: 300px; 
       height: 300px; 
       display: block; 
       border-radius: 50%;
       margin-top: 10px;
     }
-   
+    #controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .color-container {
+            display: flex;
+            gap: 10px;
+            padding: 20px;
+        }
+        .color-option {
+            width:20px;
+            height: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        .color-option:hover {
+            transform: scale(1.1);
+        }
+        .red { background-color: rgb(248, 53, 53); }
+        .green { background-color: rgb(41, 192, 41); }
+        .blue { background-color: rgb(6, 6, 145); }
+    
   </style>
   <script>
     let updateInterval;
+    let zoomLevel = 1.0; // Initial zoom level
 
     function drawLines(ctx, canvas) {
       // Draw horizontal red line
       ctx.strokeStyle = 'red';
-      ctx.lineWidth = .5;
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo((canvas.width / 2) - 20, canvas.height / 2);
       ctx.lineTo((canvas.width / 2) + 20, canvas.height / 2);
@@ -39,7 +62,7 @@
 
       // Draw vertical gray lines
       ctx.strokeStyle = 'gray';
-      ctx.lineWidth = .5 ;
+      ctx.lineWidth = 0.5;
       const cmToPx = 10; // 1 cm in pixels assuming 96 DPI
       for (let i = cmToPx; i < canvas.width; i += cmToPx) {
         ctx.beginPath();
@@ -55,32 +78,51 @@
       const img = new Image();
       img.onload = function() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const width = img.width * zoomLevel;
+        const height = img.height * zoomLevel;
+        const x = (canvas.width - width) / 2;
+        const y = (canvas.height - height) / 2;
+        ctx.drawImage(img, x, y, width, height);
         drawLines(ctx, canvas);
       };
       img.src = 'http://192.168.1.18/cam-lo.jpg?' + new Date().getTime();
     }
 
     function startUpdating() {
-      const interval = document.getElementById('textbox').value || 1000;
+      const interval = 200;
       clearInterval(updateInterval);
       updateInterval = setInterval(updateImage, interval);
       updateImage(); // Display initial image
     }
 
+    function zoomIn() {
+      zoomLevel += 0.1;
+      updateImage();
+    }
+
+    function choseColor(color){
+      alert(color)
+    }
+
     window.onload = function() {
-      const startButton = document.getElementById('startButton');
-      startButton.onclick = startUpdating;
       startUpdating(); // Start updating by default
     };
   </script>
 </head>
 <body>
-  <div id="controls">
-    <input type="number" id="textbox" placeholder="width of your nail" />
-    <button id="startButton">Start</button>
+  <div class="color-container">
+    <div class="color-option red" onclick="choseColor('red')"></div>
+    <div class="color-option green" onclick="choseColor('green')"></div>
+    <div class="color-option blue" onclick="choseColor('blue')"></div>
+  </div>
+  <div id="control2">
+    <input type="number" id="textbox" placeholder="Enter your nail width" />
+    <button id="startButton">send</button>
   </div>
 
-    <canvas id="camera-feed"></canvas>
+  <canvas id="camera-feed"></canvas>
+  <div id="controls">
+    <button onclick="zoomIn()">Zoom In</button>
+  </div>
 </body>
 </html>
