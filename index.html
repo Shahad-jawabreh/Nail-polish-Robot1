@@ -12,19 +12,16 @@
       justify-content: center; 
       align-items: center; 
       height: 100vh; 
-      background-color: #ebe6e6; /* Optional: Background color for better visibility */
+      background-color: #ff4343; /* Optional: Background color for better visibility */
     }
     canvas { 
-      width: 50vw; 
-      height: 50vh; 
+      margin-top: 10px;
+      width: 100%; 
+      height: 100%; 
       display: block; 
+      border-radius: 50%;
     }
-    #controls {
-      margin: 10px;
-    }
-    #textbox {
-      margin-right: 10px;
-    }
+   
   </style>
   <script>
     let updateInterval;
@@ -78,9 +75,11 @@
 </head>
 <body>
   <div id="controls">
-    <input type="number" id="textbox" placeholder="Enter interval in ms" />
+    <input type="number" id="textbox" placeholder="width of your nail" />
     <button id="startButton">Start</button>
   </div>
-  <canvas id="camera-feed"></canvas>
+  <div style="width: 50%; height: 50%;">
+    <canvas id="camera-feed"></canvas>
+  </div>
 </body>
 </html>
