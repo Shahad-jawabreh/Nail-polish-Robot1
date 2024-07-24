@@ -18,7 +18,6 @@
       width: 100vw; 
       height: 50vh; 
       display: block; 
-      position: relative;
     }
     #controls {
       margin: 10px;
@@ -30,6 +29,27 @@
   <script>
     let updateInterval;
 
+    function drawLines(ctx, canvas) {
+      // Draw horizontal red line
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+
+      // Draw vertical gray lines
+      ctx.strokeStyle = 'lightgray';
+      ctx.lineWidth = 1;
+      const cmToPx = 37.7953; // 1 cm in pixels assuming 96 DPI
+      for (let i = cmToPx; i < canvas.width; i += cmToPx) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, canvas.height);
+        ctx.stroke();
+      }
+    }
+
     function updateImage() {
       const canvas = document.getElementById('camera-feed');
       const ctx = canvas.getContext('2d');
@@ -37,31 +57,13 @@
       img.onload = function() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // Draw horizontal red line
-        ctx.strokeStyle = 'red';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(0, canvas.height / 2);
-        ctx.lineTo(canvas.width, canvas.height / 2);
-        ctx.stroke();
-
-        // Draw vertical gray lines
-        ctx.strokeStyle = 'lightgray';
-        ctx.lineWidth = 1;
-        const cmToPx = 37.7953; // 1 cm in pixels assuming 96 DPI
-        for (let i = cmToPx; i < canvas.width; i += cmToPx) {
-          ctx.beginPath();
-          ctx.moveTo(i, 0);
-          ctx.lineTo(i, canvas.height);
-          ctx.stroke();
-        }
+        drawLines(ctx, canvas);
       };
       img.src = 'http://192.168.1.18/cam-lo.jpg?' + new Date().getTime();
     }
 
     function startUpdating() {
-      const interval = document.getElementById('textbox').value;
+      const interval = document.getElementById('textbox').value || 1000;
       clearInterval(updateInterval);
       updateInterval = setInterval(updateImage, interval);
       updateImage(); // Display initial image
@@ -70,6 +72,7 @@
     window.onload = function() {
       const startButton = document.getElementById('startButton');
       startButton.onclick = startUpdating;
+      startUpdating(); // Start updating by default
     };
   </script>
 </head>
