@@ -15,7 +15,7 @@
       background-color: #ebe6e6; /* Optional: Background color for better visibility */
     }
     canvas { 
-      width: 100vw; 
+      width: 50vw; 
       height: 50vh; 
       display: block; 
     }
@@ -32,16 +32,16 @@
     function drawLines(ctx, canvas) {
       // Draw horizontal red line
       ctx.strokeStyle = 'red';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(0, canvas.height / 2);
-      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.moveTo((canvas.width / 2) - 20, canvas.height / 2);
+      ctx.lineTo((canvas.width / 2) + 20, canvas.height / 2);
       ctx.stroke();
 
       // Draw vertical gray lines
-      ctx.strokeStyle = 'lightgray';
-      ctx.lineWidth = 1;
-      const cmToPx = 37.7953; // 1 cm in pixels assuming 96 DPI
+      ctx.strokeStyle = 'gray';
+      ctx.lineWidth = .5 ;
+      const cmToPx = 5; // 1 cm in pixels assuming 96 DPI
       for (let i = cmToPx; i < canvas.width; i += cmToPx) {
         ctx.beginPath();
         ctx.moveTo(i, 0);
