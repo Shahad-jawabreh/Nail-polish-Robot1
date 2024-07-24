@@ -5,8 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Camera Feed</title>
   <style>
-    body { margin: 0; }
-    canvas { width: 100vw; height: 100vh; display: block; }
+    body { 
+      margin: 0; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      height: 100vh; 
+      background-color: #000; /* Optional: Background color for better visibility */
+    }
+    canvas { 
+      width: 100vw; 
+      height: 50vh; 
+      display: block; 
+    }
   </style>
   <script>
     function updateImage() {
@@ -22,10 +33,8 @@
 
     window.onload = function() {
       const canvas = document.getElementById('camera-feed');
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      setInterval(updateImage, 1000); // تحديث الصورة كل ثانية
-      updateImage(); // عرض الصورة الأولية
+      setInterval(updateImage, 1000); // Update image every second
+      updateImage(); // Display initial image
     };
   </script>
 </head>
