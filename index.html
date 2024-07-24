@@ -8,6 +8,7 @@
     body { 
       margin: 0; 
       display: flex; 
+      flex-direction: column; 
       justify-content: center; 
       align-items: center; 
       height: 100vh; 
@@ -17,9 +18,18 @@
       width: 100vw; 
       height: 50vh; 
       display: block; 
+      position: relative;
+    }
+    #controls {
+      margin: 10px;
+    }
+    #textbox {
+      margin-right: 10px;
     }
   </style>
   <script>
+    let updateInterval;
+
     function updateImage() {
       const canvas = document.getElementById('camera-feed');
       const ctx = canvas.getContext('2d');
@@ -27,18 +37,47 @@
       img.onload = function() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // Draw horizontal red line
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height / 2);
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+
+        // Draw vertical gray lines
+        ctx.strokeStyle = 'lightgray';
+        ctx.lineWidth = 1;
+        const cmToPx = 37.7953; // 1 cm in pixels assuming 96 DPI
+        for (let i = cmToPx; i < canvas.width; i += cmToPx) {
+          ctx.beginPath();
+          ctx.moveTo(i, 0);
+          ctx.lineTo(i, canvas.height);
+          ctx.stroke();
+        }
       };
       img.src = 'http://192.168.1.18/cam-lo.jpg?' + new Date().getTime();
     }
 
-    window.onload = function() {
-      const canvas = document.getElementById('camera-feed');
-      setInterval(updateImage, 1000); // Update image every second
+    function startUpdating() {
+      const interval = document.getElementById('textbox').value;
+      clearInterval(updateInterval);
+      updateInterval = setInterval(updateImage, interval);
       updateImage(); // Display initial image
+    }
+
+    window.onload = function() {
+      const startButton = document.getElementById('startButton');
+      startButton.onclick = startUpdating;
     };
   </script>
 </head>
 <body>
+  <div id="controls">
+    <input type="number" id="textbox" placeholder="Enter interval in ms" />
+    <button id="startButton">Start</button>
+  </div>
   <canvas id="camera-feed"></canvas>
 </body>
 </html>
