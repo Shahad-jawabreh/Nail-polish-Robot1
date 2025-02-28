@@ -1,0 +1,840 @@
+#include <AccelStepper.h>
+#include <Keypad.h>
+#include <LiquidCrystal_I2C.h>
+#include <MFRC522.h>
+#include <SPI.h> // Add SPI library if not already included
+#include <SoftwareSerial.h>
+#include <DFRobotDFPlayerMini.h>
+#include <Wire.h>
+
+// Define LCD pins for a standard connection
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Define stepper motor connections and motor interface type for the initial stepper motor
+#define motorInterfaceType 8
+#define stepPin1 27
+#define stepPin2 16 
+#define stepPin3 17
+#define stepPin4 23
+
+#define enA 9  // Enable pin for channel A
+#define enB 10  // Enable pin for channel B
+
+// Create a new instance of the AccelStepper class:
+AccelStepper stepperInitial = AccelStepper(motorInterfaceType, stepPin1, stepPin2, stepPin3, stepPin4);
+
+// Constants for keypad
+const byte ROWS = 4; // Four rows
+const byte COLS = 4; // Four columns
+
+// Keypad wiring to the Arduino
+char keys[ROWS][COLS] = {
+  {'1','2','3','A'},
+  {'4','5','6','B'},
+  {'7','8','9','C'},
+  {'*','0','#','D'}
+};
+byte rowPins[ROWS] = {22, 24, 26, 28}; // Connect to the row pinouts of the keypad
+byte colPins[COLS] = {30, 32, 34, 36}; // Connect to the column pinouts of the keypad
+
+// Create the keypad object
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+int angles[8] = {0, 45, 90, 136, 180, 225, 270, 315};  // Angles corresponding to keys 1 to 7
+int stepsPerRevolution = 400;  // Define how many steps are needed for a full revolution
+float stepsPerDegree = stepsPerRevolution / 360.0;
+
+// Define the stepper motor and its pins for the main program
+#define STEP_PIN 3
+#define DIR_PIN 4
+#define ENABLE_PIN 8
+
+#define STEP_PIN2 5
+#define DIR_PIN2 6
+#define ENABLE_PIN2 9
+
+#define STEP_PIN3 47
+#define DIR_PIN3 7
+#define ENABLE_PIN3 2
+
+// Define the limit switch pins
+#define LIMIT_SWITCH_PIN 43
+#define LIMIT_SWITCH_PIN2 45
+#define LIMIT_SWITCH_PIN3 25
+
+// Define buzzer pin
+#define BUZZER_PIN 49
+
+// Create instances of AccelStepper for the main program
+AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
+AccelStepper stepper2(AccelStepper::DRIVER, STEP_PIN2, DIR_PIN2);
+AccelStepper stepper3(AccelStepper::DRIVER, STEP_PIN3, DIR_PIN3);
+
+// RFID
+#define SS_PIN 53
+#define RST_PIN 11
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+// Flags to indicate movement phases
+bool movePhase1 = true;
+bool movePhase2 = false;
+bool movePhase3 = false;
+bool movePhase4 = false;
+bool movePhase5 = false;
+bool movePhase6 = false;
+bool movePhase7 = false;
+bool movePhase8 = false;
+bool movePhase9 = false;
+bool movePhase10 = false;
+bool movePhase42 = false; 
+bool movePhase32 = false;
+bool movePhase62 = false;
+bool movePhase52 = false;
+
+bool isPaid = false; // Variable to track if payment has been made
+
+// Array to store authorized UIDs
+String authorizedUIDs[] = {" 34 4b a5 71"};
+int numAuthorizedUIDs = 1;
+
+bool isAuthorized(String uid) {
+  for (int i = 0; i < numAuthorizedUIDs; i++) {
+    Serial.println(uid);
+    Serial.println(":x:");
+    Serial.println(authorizedUIDs[i]);
+    if (uid.equals(authorizedUIDs[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// DFPlayer Mini
+DFRobotDFPlayerMini myDFPlayer;
+
+// Use hardware serial on the Mega
+#define DFPLAYER_RX 19
+#define DFPLAYER_TX 18
+
+// RGB LED Pins
+int redPin = 13;
+int greenPin = 10;
+int bluePin = 12;
+
+void setup() {
+  lcd.init();           // Initialize the LCD
+  lcd.backlight();      // Turn on the backlight
+  lcd.clear();          // Clear the LCD screen
+  lcd.setCursor(0, 0);  // Set the cursor to the first column, first row
+
+  lcd.print("Scan RFID "); // Initial message
+
+  // Set the pins as outputs for the initial stepper motor
+  pinMode(enA, OUTPUT);
+  pinMode(enB, OUTPUT);
+  
+  // Enable the H-Bridge channels
+  digitalWrite(enA, HIGH);
+  digitalWrite(enB, HIGH);
+
+  // Set the maximum speed and acceleration for the initial stepper motor.
+  stepperInitial.setMaxSpeed(1000);  // Maximum speed in steps per second.
+  stepperInitial.setAcceleration(500);  // Acceleration in steps per second^2.
+  
+  Serial.begin(9600); // For debugging
+
+  // Set the maximum speed and acceleration for the main stepper motors
+  stepper.setMaxSpeed(500);
+  stepper.setAcceleration(100);
+
+  stepper2.setMaxSpeed(500);
+  stepper2.setAcceleration(100);
+
+  stepper3.setMaxSpeed(500);
+  stepper3.setAcceleration(100);
+
+  // Enable the main stepper motors
+  pinMode(ENABLE_PIN, OUTPUT);
+  digitalWrite(ENABLE_PIN, LOW); // Enabled
+
+  pinMode(ENABLE_PIN2, OUTPUT);
+  digitalWrite(ENABLE_PIN2, LOW); // Enabled
+
+  pinMode(ENABLE_PIN3, OUTPUT);
+  digitalWrite(ENABLE_PIN3, LOW); // Enabled
+
+  // Set up the limit switch pins
+  pinMode(LIMIT_SWITCH_PIN, INPUT_PULLUP);  // Use the internal pull-up resistor
+  pinMode(LIMIT_SWITCH_PIN2, INPUT_PULLUP); // Use the internal pull-up resistor
+  pinMode(LIMIT_SWITCH_PIN3, INPUT_PULLUP); // Use the internal pull-up resistor
+
+  // Initialize RFID
+  SPI.begin();
+  rfid.PCD_Init();
+  Serial.println("Scan an RFID card...");
+
+  // Initialize buzzer
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  // Initialize DFPlayer Mini
+  Serial1.begin(9600);    // Initialize Serial1 for DFPlayer Mini
+  Serial.println("Initializing DFPlayer...");
+
+  if (!myDFPlayer.begin(Serial1)) {
+    Serial.println("DFPlayer Mini not detected or SD card missing.");
+    while (true);  // Stop here if DFPlayer Mini is not detected
+  }
+  Serial.println("DFPlayer Mini ready.");
+
+  myDFPlayer.volume(30);  // Set volume to 30
+
+  // Initialize RGB LED pins
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
+
+  // Set the default color to white
+  setRGBColor(255, 255, 255);  // White color
+}
+void setRGBColor(int redVal, int greenVal, int blueVal) {
+  analogWrite(redPin, redVal);
+  analogWrite(greenPin, greenVal);
+  analogWrite(bluePin, blueVal);
+}
+
+void loop() {
+  if (!isPaid) {
+    if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+      // Show UID on serial monitor
+      Serial.print("UID tag: ");
+      String content = "";
+      for (byte i = 0; i < rfid.uid.size; i++) {
+        Serial.print(rfid.uid.uidByte[i] < 0x10 ? " 0" : " ");
+        Serial.print(rfid.uid.uidByte[i], HEX);
+        content.concat(String(rfid.uid.uidByte[i] < 0x10 ? " 0" : " "));
+        content.concat(String(rfid.uid.uidByte[i], HEX));
+      }
+      Serial.println();
+      
+      // Check if the scanned UID is authorized
+      if (isAuthorized(content)) {
+        myDFPlayer.play(2);  // Play the first track
+        delay(1000); // Adjust the delay to match the sound length
+        setRGBColor(0, 255, 0);   // Set RGB to color for key 3
+        lcd.clear();
+        lcd.print("Payment Successful");
+        tone(BUZZER_PIN, 1000, 500); // Buzz with a 1kHz tone for 500ms
+        isPaid = true; // Update payment status
+        delay(1000); // Time for confirmation
+        lcd.clear();
+        lcd.print("Choose color:");
+      } else {
+        myDFPlayer.play(3);  // Play the first track
+        delay(1000); // Adjust the delay to match the sound length
+        setRGBColor(255, 0, 0);   // Set RGB to color for key 3
+        lcd.clear();
+        lcd.print("Access Denied");
+        tone(BUZZER_PIN, 500, 500); // Buzz with a 500Hz tone for 500ms
+        delay(1000); // Time for confirmation
+        lcd.clear();
+        lcd.print("Scan RFID to start");
+      }
+      // Halt further card processing until the card is removed
+      rfid.PICC_HaltA();
+      rfid.PCD_StopCrypto1();
+    }
+    return;
+  }
+
+  // If payment has been made, allow keypad usage
+  char key = keypad.getKey();
+  
+  if (key) {
+    int targetAngle = -1;
+    int currentAngle = (int)((stepperInitial.currentPosition() / stepsPerDegree) + 360) % 360;
+
+    switch (key) {
+      case '1':
+        setRGBColor(138, 49, 0);   // Set RGB to color for key 1
+        targetAngle = angles[0];
+        lcd.clear();
+        lcd.print("Free Place");
+        break;
+      case '2':
+        setRGBColor(0, 131, 124);  // Set RGB to color for key 2
+        targetAngle = angles[1];
+        lcd.clear();
+        lcd.print("Color: blue");
+        break;
+      case '3':
+        setRGBColor(115, 0, 40);   // Set RGB to color for key 3
+        targetAngle = angles[2];
+        lcd.clear();
+        lcd.print("Color: Pink");
+        break;
+      case '4':
+        setRGBColor(138, 49, 0);   // Set RGB to color for key 1
+        targetAngle = angles[3];
+        lcd.clear();
+        lcd.print("Color: Brown");
+        break;
+      case '5':
+        targetAngle = angles[4];
+        lcd.clear();
+        lcd.print("Color: 5");
+        break;
+      case '6':
+        setRGBColor(114, 3, 4);    // Set RGB to color for key 5
+        targetAngle = angles[5];
+        lcd.clear();
+        lcd.print("Color: Red");
+        break;
+      case '7':
+        targetAngle = angles[6];
+        lcd.clear();
+        lcd.print("Color: Remover");
+        break;
+      case '8':
+        targetAngle = angles[7];
+        lcd.clear();
+        lcd.print("Color: White");
+        break;
+      case '*':
+        // Play sound via DFPlayer Mini
+        myDFPlayer.play(1);  // Play the first track
+        delay(4000); // Adjust the delay to match the sound length
+
+        // Call the finger detection check
+        checkFingerDetection();
+
+        // Reset phases and start the main process when '*' is pressed
+        resetPhases(movePhase1, movePhase2, movePhase3, movePhase4, movePhase5, movePhase6, movePhase7);
+        lcd.clear();
+        lcd.print("Started");
+        runMainProcess();
+        return;
+
+      case '0':
+        // Reset phases and start the main process when '0' is pressed
+        // Play sound via DFPlayer Mini
+        myDFPlayer.play(1);  // Play the first track
+        delay(4000); // Adjust the delay to match the sound length
+
+        // Call the finger detection check
+        checkFingerDetection();
+        lcd.clear();
+        lcd.print("Started");
+        run2MainProcess();
+        return;
+
+      case 'C':
+        // Start the new sequence for the C key
+        lcd.clear();
+        lcd.print("C Sequence");
+        runCSequence();
+        return;
+      default:
+        Serial.println("Invalid key");
+        return;
+    }
+
+    // Debugging: print the key pressed and the target angle
+    Serial.print("Key pressed: ");
+    Serial.println(key);
+    Serial.print("Current angle: ");
+    Serial.println(currentAngle);
+    Serial.print("Target angle: ");
+    Serial.println(targetAngle);
+    
+    int deltaAngle = (targetAngle - currentAngle + 360) % 360;
+    if (deltaAngle > 180) {
+      deltaAngle -= 360;
+    }
+
+    int steps = deltaAngle * stepsPerDegree;
+    Serial.print("Steps to move: ");
+    Serial.println(steps);
+    
+    stepperInitial.move(steps);
+    while (stepperInitial.distanceToGo() != 0) {
+      stepperInitial.run();
+    }
+  }
+}
+
+void goToFreePlace() {
+  int targetAngle = angles[0];  // Free Place angle
+  int currentAngle = (int)((stepperInitial.currentPosition() / stepsPerDegree) + 360) % 360;
+
+  int deltaAngle = (targetAngle - currentAngle + 360) % 360;
+  if (deltaAngle > 180) {
+    deltaAngle -= 360;
+  }
+
+  int steps = deltaAngle * stepsPerDegree;
+  Serial.print("Moving to Free Place. Steps to move: ");
+  Serial.println(steps);
+  
+  stepperInitial.move(steps);
+  while (stepperInitial.distanceToGo() != 0) {
+    stepperInitial.run();
+  }
+
+  lcd.clear();
+  lcd.print("Scan RFID");
+}
+
+void resetPhases(bool &phase1, bool &phase2, bool &phase3, bool &phase4, bool &phase5, bool &phase6, bool &phase7) {
+  phase1 = true;
+  phase2 = false;
+  phase3 = false;
+  phase4 = false;
+  phase5 = false;
+  phase6 = false;
+  phase7 = false;
+}
+
+void checkFingerDetection() {
+  String incomingData;
+  bool fingerDetected = false;
+  int noFingerCount = 0;  // عداد عدد مرات "No finger detected"
+
+  while (!fingerDetected) {
+    if (Serial.available() > 0) {
+      incomingData = Serial.readStringUntil('\n');
+      incomingData.trim();
+
+      // عرض البيانات الواردة لأغراض التصحيح
+      Serial.print("Raw data: '");
+      Serial.print(incomingData);
+      Serial.println("'");
+
+      lcd.clear();
+
+      if (incomingData == "no data") {
+        noFingerCount++;  // زيادة العداد
+
+        if (noFingerCount % 7 == 0) {  // فقط كل 7 مرات تعرض الرسالة
+          lcd.print("No finger detected");
+          myDFPlayer.play(4);
+          delay(1000);  // إعطاء الوقت لعرض الرسالة
+        }
+        
+        // إضافة تأخير صغير لمنع تكرار سريع جدًا
+        delay(200);
+
+      } else if (incomingData.length() > 0) {
+        float fingerWidth = incomingData.toFloat();  // تحويل القيمة إلى عدد عشري
+
+        // إذا كان عرض الإصبع أقل من 8 أو أكبر من 25، اعتبره كأنه "No finger detected"
+        if (fingerWidth > 0 && (fingerWidth < 7 || fingerWidth > 25)) {
+          noFingerCount++;  // زيادة العداد
+
+          if (noFingerCount % 7 == 0) {  // فقط كل 7 مرات تعرض الرسالة
+            lcd.print("No finger detected");
+            myDFPlayer.play(4);
+            delay(1000);  // إعطاء الوقت لعرض الرسالة
+          }
+
+          // إضافة تأخير صغير لمنع تكرار سريع جدًا
+          delay(200);
+
+        } else if (fingerWidth >= 7 && fingerWidth <= 25) { // معالجة القيم الصالحة فقط
+          lcd.print("Width: ");
+          lcd.print(fingerWidth);
+          lcd.print(" mm");
+          fingerDetected = true;  // إنهاء الحلقة عند استلام قيمة عرض الإصبع الصالح
+          delay(3000);  // إعطاء الوقت لعرض الرسالة
+        } else {
+          lcd.print(" ");
+          delay(1000);  // إعطاء الوقت لعرض الرسالة
+        }
+      }
+    }
+  }
+}
+
+
+
+void runMainProcess() {
+  Serial.println("Starting main process...");
+
+  // Set the initial direction to upwards for the main steppers
+  digitalWrite(DIR_PIN, LOW);
+  digitalWrite(DIR_PIN2, LOW);
+  digitalWrite(DIR_PIN3, LOW);
+
+  // Move all steppers upwards until the limit switches are pressed
+  stepper.move(-10000);  // Move indefinitely
+  stepper2.move(-10000); // Move indefinitely
+  stepper3.move(-10000); // Move indefinitely
+
+  while (true) {
+    // Run all motors
+    stepper.run();
+    stepper2.run();
+    stepper3.run();
+
+    // Phase 1: Move all steppers upwards until the limit switches are pressed
+    if (movePhase1) {
+      if (digitalRead(LIMIT_SWITCH_PIN) == LOW) {
+        stepper.stop();
+        digitalWrite(ENABLE_PIN, HIGH); // Disable stepper
+      }
+      if (digitalRead(LIMIT_SWITCH_PIN2) == LOW) {
+        stepper2.stop();
+        digitalWrite(ENABLE_PIN2, HIGH); // Disable stepper2
+      }
+      if (digitalRead(LIMIT_SWITCH_PIN3) == LOW) {
+        stepper3.stop();
+        digitalWrite(ENABLE_PIN3, HIGH); // Disable stepper3
+      }
+
+      // Check if all motors have stopped
+      if (stepper.distanceToGo() == 0 && stepper2.distanceToGo() == 0 && stepper3.distanceToGo() == 0) {
+        movePhase1 = false;
+        movePhase2 = true;
+
+        // Set the direction to downwards
+        digitalWrite(DIR_PIN, HIGH);
+        digitalWrite(DIR_PIN2, HIGH);
+        digitalWrite(DIR_PIN3, HIGH);
+
+        // Move all steppers down 500 steps
+        stepper.move(600);
+        stepper2.move(600);
+        stepper3.move(600);
+
+        // Enable the motors again
+        digitalWrite(ENABLE_PIN, LOW);
+        digitalWrite(ENABLE_PIN2, LOW);
+        digitalWrite(ENABLE_PIN3, LOW);
+      }
+    }
+
+    // Phase 2: Move all steppers down 500 steps
+    if (movePhase2) {
+      if (stepper.distanceToGo() == 0 && stepper2.distanceToGo() == 0 && stepper3.distanceToGo() == 0) {
+        movePhase2 = false;
+        movePhase3 = true;
+
+        // Set the direction to upwards
+        digitalWrite(DIR_PIN, LOW);
+        digitalWrite(DIR_PIN2, LOW);
+        digitalWrite(DIR_PIN3, LOW);
+
+        // Move all steppers upwards until the limit switches are pressed
+        stepper.move(-10000);  // Move indefinitely
+        stepper2.move(-10000); // Move indefinitely
+        stepper3.move(-10000); // Move indefinitely
+      }
+    }
+
+    // Phase 3: Move all steppers upwards until the limit switches are pressed
+    if (movePhase3) {
+      if (digitalRead(LIMIT_SWITCH_PIN) == LOW) {
+        stepper.stop();
+        digitalWrite(ENABLE_PIN, HIGH); // Disable stepper
+      }
+      if (digitalRead(LIMIT_SWITCH_PIN2) == LOW) {
+        stepper2.stop();
+        digitalWrite(ENABLE_PIN2, HIGH); // Disable stepper2
+      }
+      if (digitalRead(LIMIT_SWITCH_PIN3) == LOW) {
+        stepper3.stop();
+        digitalWrite(ENABLE_PIN3, HIGH); // Disable stepper3
+      }
+
+      // Check if all motors have stopped
+      if (stepper.distanceToGo() == 0 && stepper2.distanceToGo() == 0 && stepper3.distanceToGo() == 0) {
+        movePhase3 = false;
+        movePhase4 = true;
+
+        // Move stepper 3 down 300 steps
+        digitalWrite(ENABLE_PIN3, LOW); // Enable stepper3
+        digitalWrite(DIR_PIN3, HIGH); // Set direction to downwards
+        stepper3.move(300);
+      }
+    }
+
+    // Phase 4: Move stepper 3 down 300 steps
+    if (movePhase4) {
+      if (stepper3.distanceToGo() == 0) {
+        movePhase4 = false;
+        movePhase5 = true;
+
+        // Move all steppers down 50 steps
+        stepper.move(50);
+        stepper2.move(50);
+        stepper3.move(50);
+
+        // Enable the motors again
+        digitalWrite(ENABLE_PIN, LOW);
+        digitalWrite(ENABLE_PIN2, LOW);
+        digitalWrite(ENABLE_PIN3, LOW);
+      }
+    }
+
+    // New Phase 5: Move all steppers down 50 steps
+    if (movePhase5) {
+      if (stepper.distanceToGo() == 0 && stepper2.distanceToGo() == 0 && stepper3.distanceToGo() == 0) {
+        movePhase5 = false;
+        movePhase6 = true;
+
+        // Move stepper 3 up 300 steps
+        digitalWrite(ENABLE_PIN3, LOW); // Enable stepper3
+        digitalWrite(DIR_PIN3, LOW);    // Set direction to upwards
+        stepper3.move(-300);
+      }
+    }
+
+    // Existing Phase 5 (now Phase 6): Move stepper 3 upwards until the limit switch is pressed
+    if (movePhase6) {
+      if (stepper3.distanceToGo() == 0) {
+        movePhase6 = false;
+        movePhase7 = true;
+
+        // Set the direction to upwards for all steppers
+        digitalWrite(DIR_PIN, LOW);
+        digitalWrite(DIR_PIN2, LOW);
+        digitalWrite(DIR_PIN3, LOW);
+
+        // Move all steppers upwards until the limit switches are pressed
+        stepper.move(-10000);  // Move indefinitely
+        stepper2.move(-10000); // Move indefinitely
+        stepper3.move(-10000); // Move indefinitely
+      }
+    }
+
+    // Existing Phase 6 (now Phase 7): Move all steppers upwards until the limit switch is pressed
+    if (movePhase7) {
+      if (digitalRead(LIMIT_SWITCH_PIN) == LOW) {
+        stepper.stop();
+        digitalWrite(ENABLE_PIN, HIGH); // Disable stepper
+      }
+      if (digitalRead(LIMIT_SWITCH_PIN2) == LOW) {
+        stepper2.stop();
+        digitalWrite(ENABLE_PIN2, HIGH); // Disable stepper2
+      }
+      if (digitalRead(LIMIT_SWITCH_PIN3) == LOW) {
+        stepper3.stop();
+        digitalWrite(ENABLE_PIN3, HIGH); // Disable stepper3
+      }
+
+      // Check if all motors have stopped
+      if (stepper.distanceToGo() == 0 && stepper2.distanceToGo() == 0 && stepper3.distanceToGo() == 0) {
+        // All phases completed
+        Serial.println("Main process completed.");
+        isPaid = false;  // Reset the payment flag to require a new RFID scan
+        lcd.clear();
+        lcd.print("Process Complete");
+        delay(1000);  // Wait for 1 second
+        lcd.clear();
+        lcd.print("Scan RFID to start");
+
+        stepper.setCurrentPosition(0);
+        stepper2.setCurrentPosition(0);
+        stepper3.setCurrentPosition(0);
+
+        // Reset all phase flags for the next run
+        movePhase1 = true;
+        movePhase2 = false;
+        movePhase3 = false;
+        movePhase4 = false;
+        movePhase5 = false;
+        movePhase6 = false;
+        movePhase7 = false;
+          goToFreePlace();
+        return;  // Exit the function and return to loop
+      }
+    }
+  }
+}
+
+
+void runCSequence(){
+  Serial.println("Starting main process...");
+
+  // Set the initial direction to upwards for the main steppers
+  digitalWrite(DIR_PIN, LOW);
+  digitalWrite(DIR_PIN2, LOW);
+  digitalWrite(DIR_PIN3, LOW);
+
+  // Move all steppers upwards until the limit switches are pressed
+  stepper.move(-10000);  // Move indefinitely
+  stepper2.move(-10000); // Move indefinitely
+  stepper3.move(-10000); // Move indefinitely
+
+  while (true) {
+    // Run all motors
+    stepper.run();
+    stepper2.run();
+    stepper3.run();
+
+    // Phase 1: Move all steppers upwards until the limit switches are pressed
+    if (movePhase1) {
+      if (digitalRead(LIMIT_SWITCH_PIN) == LOW) {
+        stepper.stop();
+        digitalWrite(ENABLE_PIN, HIGH); // Disable stepper
+      }
+      if (digitalRead(LIMIT_SWITCH_PIN2) == LOW) {
+        stepper2.stop();
+        digitalWrite(ENABLE_PIN2, HIGH); // Disable stepper2
+      }
+      if (digitalRead(LIMIT_SWITCH_PIN3) == LOW) {
+        stepper3.stop();
+        digitalWrite(ENABLE_PIN3, HIGH); // Disable stepper3
+      }
+
+      // Check if all motors have stopped
+      if (stepper.distanceToGo() == 0 && stepper2.distanceToGo() == 0 && stepper3.distanceToGo() == 0) {
+        movePhase1 = false;
+        movePhase2 = true;
+
+        // Set the direction to downwards
+        digitalWrite(DIR_PIN, HIGH);
+        digitalWrite(DIR_PIN2, HIGH);
+        digitalWrite(DIR_PIN3, HIGH);
+
+        // Move all steppers down 500 steps
+        stepper.move(500);
+        stepper2.move(500);
+        stepper3.move(500);
+
+        // Enable the motors again
+        digitalWrite(ENABLE_PIN, LOW);
+        digitalWrite(ENABLE_PIN2, LOW);
+        digitalWrite(ENABLE_PIN3, LOW);
+      }
+    }
+
+    // Phase 2: Move all steppers down 500 steps
+    if (movePhase2) {
+      if (stepper.distanceToGo() == 0 && stepper2.distanceToGo() == 0 && stepper3.distanceToGo() == 0) {
+        movePhase2 = false;
+        movePhase3 = true;
+
+        // Set the direction to upwards
+        digitalWrite(DIR_PIN, LOW);
+        digitalWrite(DIR_PIN2, LOW);
+        digitalWrite(DIR_PIN3, LOW);
+
+        // Move all steppers upwards until the limit switches are pressed
+        stepper.move(-150);  // Move indefinitely
+        stepper2.move(-150); // Move indefinitely
+        stepper3.move(-150); // Move indefinitely
+      }
+    }
+    if (movePhase3) {
+      if (stepper3.distanceToGo() == 0) {
+        movePhase3 = false;
+        movePhase4 = true;
+
+        // Move all steppers down 150 steps
+        stepper.move(150);
+        stepper2.move(150);
+        stepper3.move(150);
+
+        // Enable the motors again
+        digitalWrite(ENABLE_PIN, LOW);
+        digitalWrite(ENABLE_PIN2, LOW);
+        digitalWrite(ENABLE_PIN3, LOW);
+      }
+    }
+    if (movePhase4) {
+      if (stepper3.distanceToGo() == 0) {
+        movePhase4 = false;
+        movePhase5 = true;
+
+        // Move all steppers up 150 steps
+        stepper.move(-150);
+        stepper2.move(-150);
+        stepper3.move(-150);
+
+        // Enable the motors again
+        digitalWrite(ENABLE_PIN, LOW);
+        digitalWrite(ENABLE_PIN2, LOW);
+        digitalWrite(ENABLE_PIN3, LOW);
+      }
+    }
+    if (movePhase5) {
+      if (stepper3.distanceToGo() == 0) {
+        movePhase5 = false;
+        movePhase6 = true;
+
+        // Move all steppers down 150 steps
+        stepper.move(150);
+        stepper2.move(150);
+        stepper3.move(150);
+
+        // Enable the motors again
+        digitalWrite(ENABLE_PIN, LOW);
+        digitalWrite(ENABLE_PIN2, LOW);
+        digitalWrite(ENABLE_PIN3, LOW);
+      }
+    }
+    if (movePhase6) {
+      if (stepper3.distanceToGo() == 0) {
+        movePhase6 = false;
+        movePhase7 = true;
+
+        // Move all steppers down 150 steps
+        stepper.move(-150);
+        stepper2.move(-150);
+        stepper3.move(-150);
+
+        // Enable the motors again
+        digitalWrite(ENABLE_PIN, LOW);
+        digitalWrite(ENABLE_PIN2, LOW);
+        digitalWrite(ENABLE_PIN3, LOW);
+      }
+    }
+    if (movePhase7) {
+      if (stepper3.distanceToGo() == 0) {
+        movePhase7 = false;
+        movePhase8 = true;
+
+        // Move all steppers down 150 steps
+        stepper.move(150);
+        stepper2.move(150);
+        stepper3.move(150);
+
+        // Enable the motors again
+        digitalWrite(ENABLE_PIN, LOW);
+        digitalWrite(ENABLE_PIN2, LOW);
+        digitalWrite(ENABLE_PIN3, LOW);
+      }
+    }
+    if (movePhase8) {
+      if (stepper3.distanceToGo() == 0) {
+        movePhase8 = false;
+        movePhase9 = true;
+
+        // Move all steppers down 150 steps
+        stepper.move(-150);
+        stepper2.move(-150);
+        stepper3.move(-150);
+
+        // Enable the motors again
+        digitalWrite(ENABLE_PIN, LOW);
+        digitalWrite(ENABLE_PIN2, LOW);
+        digitalWrite(ENABLE_PIN3, LOW);
+      }
+    }
+    if (movePhase9) {
+      if (stepper3.distanceToGo() == 0) {
+        movePhase9 = false;
+        movePhase10 = true;
+
+        // Move all steppers down 150 steps
+        stepper.move(150);
+        stepper2.move(150);
+        stepper3.move(150);
+
+        // Enable the motors again
+        digitalWrite(ENABLE_PIN, LOW);
+        digitalWrite(ENABLE_PIN2, LOW);
+        digitalWrite(ENABLE_PIN3, LOW);
+      }
+    } 
+    /
